@@ -1,3 +1,481 @@
-version https://git-lfs.github.com/spec/v1
-oid sha256:e6497f4abe37a79ad8aab832088c9428980eb1147824d728de74ee2a7d856b05
-size 16881
+<!DOCTYPE html>
+<meta charset="utf-8">
+<head>
+<script src="http://d3js.org/d3.v4.min.js" charset="utf-8"></script>
+    <style>
+        input {border: 1px dotted #ccc; background: white; font-family: monospace; padding: 10px 20px; font-size: 18px; margin: 20px 10px 20px 0; color: black;}
+        input:focus { background-color:lightblue; outline: none;}
+	body { margin:0;position:absolute; top:0;right:0;bottom:0;left:0; }
+	.svg_fundamental {position:absolute; top:75px;right:0;bottom:0;left:60px; }
+	.svg_technical {position:absolute; top:650px;right:0; left:60px;}
+	.svg_top_10 {position:absolute; top:75px;right:0; left:1200px;}
+	.fundamentalDropdown {position:absolute;  top:100px; left: 15px;}
+	.technicalDropdown {position:absolute;  top:675px; left: 15px;}
+    	.line {
+      		fill: none;
+      		stroke: steelblue;
+      		stroke-width: 1.5px;
+	}
+
+  div.tooltip {
+  position: absolute;
+  text-align: center;
+  width: 90px;
+  height: 28px;
+  padding: 2px;
+  font: 12px sans-serif;
+  background: pink;
+  border: 0px;
+  border-radius: 8px;
+  pointer-events: none;
+}
+
+    </style>
+</head>
+<body>
+	<form name="myform" onSubmit="return handleClick()">
+      <input type="text" id="myVal" placeholder="Search (eg. GOOG)">
+    </form>
+<script>
+
+// define the dimensions and margins for the graph
+// Set width and height
+    var width = 960;
+    var height = 500;
+    var width_top10 = 500;
+    var height_top10 = 1000;
+    var margin_x = 50;
+    var margin_y = 40;
+    //other constants     
+    var barWidth = 10;
+    var barPadding = 5;
+    var effective_bar_width = barWidth - barPadding;
+    var time_ticks = 10;
+    var y_tick_values = 20000;
+    var y_label_position_x = -200;
+    var y_label_position_y = 10;
+    var x_label_position_x = 480;
+    var x_label_position_y = 500;
+    var searchTikr = "GOOG" //default
+    var global_data = "" //default
+    var global_data_tech = "" //default
+    var displayed = 0;
+    var selectedFundamental = "Revenue" //default
+    var selectedTechnical = "Close_Price" //default
+    plotFundamentalData(searchTikr, selectedFundamental); 
+    plotTechnicalData(searchTikr, selectedTechnical); 
+
+// FUNDAMENTAL DROPDOWN
+var fundamentals = ["Revenue","Earnings","R&D Costs","Income Before Taxes"]
+var fundamental_dict = {"Revenue":"Revenue","Earnings":"Earnings","R&D Costs":"RnD_Costs","Income Before Taxes":"IBT"}
+var dropDownFundamentalElement = d3.select("body")
+                .append("select")
+                .attr('id','fundamentalDropdown')
+                .attr('class','fundamentalDropdown')           
+                .selectAll('myOptions')
+                .data(fundamentals)
+                .enter()
+                .append('option')
+                .text(d=>d) // text showed in the menu
+                .attr("value", d=>d) // corresponding value returned by the button
+
+            // event listener for the dropdown. Update fundamental chart and title when selection changes. Call plotFundamentalData() with required arguments.
+
+            d3.select("#fundamentalDropdown")
+              .on("change", function (d) {
+                    selectedFundamental = d3.select(this).property("value")
+                    plotFundamentalData(searchTikr, selectedFundamental);
+                }) 
+    
+// SVG FUNDAMENTAL
+var svg_fundamental = d3.select("body")
+            .append("svg")
+            .attr("class","svg_fundamental")
+
+// FUNDAMENTAL TOOLTIP
+var div = d3.select("body").append("div")
+    .attr("class", "tooltip")
+    .style("opacity", 0);
+
+// TECHNICAL DROPDOWN
+var technicals = ["Close_Price","MACD","Diff_MACD","Signal","RSI","EMA_9Day"]
+var dropDownTechnicalElement = d3.select("body")
+                .append("select")
+                .attr('id','technicalDropdown')
+                .attr('class','technicalDropdown')           
+                .selectAll('myOptions')
+                .data(technicals)
+                .enter()
+                .append('option')
+                .text(d=>d) // text showed in the menu
+                .attr("value", d=>d) // corresponding value returned by the button
+
+            // event listener for the dropdown. Update technical chart and title when selection changes. Call plotTechnicalData() with required arguments.
+
+            d3.select("#technicalDropdown")
+              .on("change", function (d) {
+                    selectedTechnical = d3.select(this).property("value")
+                    plotTechnicalData(searchTikr, selectedTechnical);
+                }) 
+
+// SVG TECHNICAL
+var svg_technical = d3.select("body")
+            .append("svg")
+            .attr("class","svg_technical")
+            .attr("width", width)
+            .attr("height", height);
+
+// SVG TOP 10
+var svg_top_10 = d3.select("body")
+            .append("svg")
+            .attr("class","svg_top_10")
+            .attr("width", width_top10)
+            .attr("height", height_top10)
+
+// Add list TO SVG top 10
+d3.json("http://127.0.0.1:5000/top_ten_list/", function(error,data) {
+    svg_top_10.selectAll('text')
+        .data(data.sort(function(a, b){ return d3.descending(a.prob, b.prob);}).slice(0, 10))
+        .enter().append('text')
+        .attr("x", function(d,i){return 100})
+        .attr("y", function(d,i){return 100 * (i) + 100})
+        .text(function(d, i){return String(i+1) + ". " + String(d.ticker)})
+        .attr("font-size", 25);
+
+    svg_top_10.append('text')
+        .attr("x", function(d,i){return 200})
+        .attr("y", function(d,i){return 50 * (i) + 25})
+        .text("Top 10 Stocks")
+        .attr("font-size", 30)
+        .attr("font-weight", "bold");
+});
+
+//On searching for a tikr
+function handleClick(event){    
+    searchTikr = document.getElementById("myVal").value
+    console.log(searchTikr);
+    plotFundamentalData(searchTikr, selectedFundamental);  
+    plotTechnicalData(searchTikr, selectedTechnical);  
+    return false;
+}
+
+
+function plotFundamentalData(searchTikr, fundamentalToPlot){
+	d3.json("http://127.0.0.1:5000/stock_data/"+searchTikr, function(error,data) {
+	global_data = data.map(function(d) {
+		return {
+			year: d.Year,
+			Revenue: +(d.Revenue/1000000000),
+			Earnings: +(d.Earnings/1000000000),
+			RnD_Costs: +(d["Research Development"]/1000000000),
+			IBT: +(d["Income Before Tax"]/1000000000),
+			ticker: d.ticker
+				}
+			});
+	console.log("global_data",global_data);
+	console.log("fundamental to plot: ", fundamentalToPlot);
+
+	if(displayed == 1)
+	{
+		svg_fundamental
+                .selectAll("*")
+                .style("display","none")
+                .attr("display","none");
+                displayed = 0;
+	}
+
+     // set the dimensions and margins of the graph
+            var margin = {top: 15, right: 20, bottom: 50, left: 100},
+                width = 960 - margin.left - margin.right,
+                height = 500 - margin.top - margin.bottom;
+
+            // set the ranges
+            var y = d3.scaleBand()
+                      .range([0,height])
+                      .padding(0.4);
+
+            var x = d3.scaleLinear()
+                      .range([0, width]);
+
+	svg_fundamental.attr("id","barchart")
+                .attr("width", width + margin.left + margin.right)
+                .attr("height", height + margin.top + margin.bottom)
+                // .append("g")
+                 .attr("transform", 
+                       "translate(" + margin.left + "," + margin.top + ")");
+
+	              // Scale the range of the data in the domains
+	          x.domain([0, d3.max(global_data, function(d){ return d[fundamental_dict[fundamentalToPlot]]; })])
+	          y.domain(global_data.map(function(d) { return d.year; }));
+
+	// append the rectangles for the bar chart
+	svg_fundamental.append('g')
+                  .attr('id',"bars")
+                  .selectAll("rect")
+                  .data(global_data)
+                  .enter().append("rect")                  
+                  .attr("class", "bar")
+                  //.attr("x", function(d) { return x(d.users_rated); })
+                  .attr("width", function(d) {return x(d[fundamental_dict[fundamentalToPlot]]); } )
+                  .attr("y", function(d) { return y(d.year); })
+                  .attr("height", y.bandwidth())
+                  .style("fill","skyblue")
+                  .attr("transform", 
+                       "translate(" + margin.left + "," + margin.top + ")")
+                  .on('mouseover',function(d) {
+                    console.log("This is a mouseover...");
+                   d3.select(this)
+                    .style("fill", "lightsteelblue")
+                   div.transition()
+                    .duration(200)
+                    .style("opacity", .9);
+                    div.html("$"+d[fundamental_dict[fundamentalToPlot]]+" bn")
+                    .style("left", (d3.event.pageX) + "px")
+                    .style("top", (d3.event.pageY - 28) + "px");
+                  })
+                  .on('mouseout',function(d){
+                    d3.select(this)
+                    .style("fill", "skyblue")
+                           div.transition()
+                    .duration(500)
+                    .style("opacity", 0);
+                  })
+
+     // add the x Axis
+     svg_fundamental.append("g")
+                  .attr("id","x-axis-bars")
+                  .attr("class", "xAxis")
+                  //.attr("transform", "translate(0," + height + ")")
+                  .attr("transform", 
+                       "translate(" + margin.left + "," + (height + margin.top) + ")")
+                  .call(d3.axisBottom(x))
+
+     // add the y Axis
+     const y_axis = 
+         			svg_fundamental.append("g")
+        		  .attr("id","y-axis-bars")
+                  .call(d3.axisLeft(y))
+                  .attr("transform", 
+                       "translate(" + margin.left + "," + margin.top + ")")    
+
+                  // chart title
+              svg_fundamental.append('g')
+                    .attr('id','bar_chart_title')
+                    .append('text')      
+                    .attr('x', width / 2)
+                    //.attr('y', 10)
+                    .attr('text-anchor', 'middle')
+                    .text(searchTikr +" "+fundamentalToPlot)
+                    .attr("transform", 
+                       "translate(" + margin.left + "," + margin.top + ")");
+
+              // x axis label
+                  
+                  x_axis_label=svg_fundamental.append("g")
+                  .attr("id","bar_x_axis_label")
+
+                  x_axis_label.append("text")
+                  .attr("y",height + 30)
+                  .attr("x",width/2)
+                  .style("text-anchor", "middle")
+                  .text(fundamentalToPlot + " (billion USD)")
+                  .attr("transform", 
+                       "translate(" + margin.left + "," + margin.top + ")");
+
+
+              // y axis label
+                    y_axis_label=svg_fundamental
+                    .append("g")
+                    .attr("id","bar_y_axis_label")
+
+                    y_axis_label.append("text")
+                    .attr("transform", "rotate(-90)")
+                    .attr("dy", ".75em")
+                    .attr("y", 20)
+                    .attr("x",-150)
+                    .style("text-anchor", "end")
+                    .text("Year"); 
+
+        displayed = 1;
+
+	});
+
+
+}
+
+
+
+function plotTechnicalData(searchTikr, technicalToPlot){
+	d3.json("http://127.0.0.1:5000/stock_data_tech/"+searchTikr, function(error,data) {
+	global_data_tech = data.map(function(d) {
+		return {
+			date: d3.timeParse("%Y-%m-%d %H:%M:%S")(d.Date),
+			Close_Price: +d.Close,
+			MACD: +d.MACD,
+			Diff_MACD: +d.diff_MACD,
+			Signal: +d.signal,
+			RSI: +d.RSI,
+			EMA_9Day: +d.EMA_9,
+			ticker: d.ticker
+				}
+			});
+	console.log("global_data_tech", global_data_tech)
+	console.log("technical to plot: ", technicalToPlot);
+
+	if(displayed == 1)
+	{
+		 svg_technical
+                .selectAll("*")
+                .style("display","none")
+                .attr("display","none");
+                displayed = 0;
+	}
+	
+	
+
+    	// set the dimensions and margins of the graph
+	var margin = {top: 15, right: 20, bottom: 50, left: 100},
+        	width = 960 - margin.left - margin.right,
+                height = 500 - margin.top - margin.bottom;
+
+ 
+     	// set the ranges
+        var x = d3.scaleTime().rangeRound([0,width]);
+	var x_axis = d3.axisBottom(x);
+	var y = d3.scaleLinear().rangeRound([height,0]);
+	var y_axis = d3.axisLeft(y);
+
+	var xFormat = "%d-%b-%Y";;
+        var parseTime = d3.timeParse("%Y-%m-%d %H:%M:%S");
+
+	svg_technical.attr("id","linechart")
+                .attr("width", width + margin.left + margin.right)
+                .attr("height", height + margin.top + margin.bottom)
+                .attr("transform", "translate(" + margin.left + "," + margin.top + ")");
+
+
+	// Scale the range of the data in the domain
+		x.domain(d3.extent(global_data_tech, function(d){ return d.date; }));
+	        y.domain([d3.min(global_data_tech, function(d) { return d[technicalToPlot]; }),d3.max(global_data_tech, function(d) { return d[technicalToPlot]; })]);
+	
+	//var close = function(d) {return d.close};
+
+	//var multiline = function(category) {
+      	//	var line = d3.line()
+        //      	.x(function(d) { return x(parseTime(d.date)); })
+        //          	.y(function(d) { return y(d[category]); });
+      	//	return line;
+    	//}
+
+	//var categories =['close', 'diff_macd', 'ema9'];
+	//var color = d3.scaleOrdinal(d3.schemeCategory10);
+	
+	
+   
+	//var lineFunction = multiline(technicalToPlot);
+      	//svg_technical.append("path")
+        //	.datum(global_data_tech) 
+        //	.attr("class", "line")
+        //	.style("stroke", "skyblue")
+        //	.attr("d", line)
+	//	.attr("transform", 
+        //        		"translate(" + margin.left + "," + margin.top + ")");
+	//var line = d3.line()
+        //       	.x(function(d) { return x(d.date); })
+        //       	.y(function(d) { return y(d[technicalToPlot]); })
+	//	.curve(d3.curveMonotoneX)
+
+
+
+
+	svg_technical.append("path")
+        	.datum(global_data_tech)
+		.attr("d", d3.line().x(function(d) { return x(d.date); }).y(function(d) { return y(d[technicalToPlot]); }))
+		.attr("class", "line") 
+        	.attr("stroke", "black")
+		.attr("stroke-width",2.0)
+		.attr("transform", 
+                       	"translate(" + margin.left + "," + margin.top + ")");
+
+	
+	//for (i in categories) {
+      	//	var lineFunction = multiline(categories[i]);
+      	//	svg_technical.append("path")
+        //		.datum(global_data_tech) 
+        //		.attr("class", "line")
+        //		.style("stroke", color(i))
+        //		.attr("d", lineFunction)
+	//		.attr("transform", 
+        //               		"translate(" + margin.left + "," + margin.top + ")");
+
+    	//}
+
+
+
+     	// add the x Axis
+     	svg_technical.append("g")
+		.attr("id", "x-axis-line")
+		.attr("class", "xAxis")
+		.attr("transform", "translate(" + margin.left + "," + (height + margin.top) + ")")
+		.call(d3.axisBottom(x).tickFormat(d3.timeFormat(xFormat)));
+
+              
+
+	// add the y Axis
+     	const y_axis_line = svg_technical.append("g")
+		.attr("id","y-axis-line")
+		.call(d3.axisLeft(y))
+		.attr("transform", "translate(" + margin.left + "," + margin.top + ")");
+        	   
+  
+
+
+     	// chart title
+        svg_technical.append('g')
+               	.attr('id','line_chart_title')
+                .append('text')      
+                .attr('x', width / 2)
+                .attr('text-anchor', 'middle')
+                .text(searchTikr +" "+technicalToPlot)
+                .attr("transform", "translate(" + margin.left + "," + margin.top + ")");
+
+	// x axis label
+        x_axis_label=svg_technical.append("g")
+        	.attr("id","line_x_axis_label")
+
+        x_axis_label.append("text")
+                .attr("y",height + 30)
+                .attr("x",width/2)
+                .style("text-anchor", "middle")
+                .text("Date")
+                .attr("transform", "translate(" + margin.left + "," + margin.top + ")");
+
+
+ 	// y axis label
+        y_axis_label=svg_technical
+             	.append("g")
+                .attr("id","line_y_axis_label")
+
+        y_axis_label.append("text")
+               	.attr("transform", "rotate(-90)")
+		.attr("dy", ".75em")
+		.attr("y", 20)
+                .attr("x",-150)
+                .style("text-anchor", "end")
+                .text(technicalToPlot); 
+
+        displayed = 1;
+
+
+	});
+	
+	
+}
+
+// ADD CONTENT TO SVG ELEMENTS
+
+
+
+</script>
+
+</body>
